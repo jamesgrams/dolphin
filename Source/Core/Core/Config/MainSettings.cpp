@@ -42,6 +42,8 @@ const ConfigInfo<std::string> MAIN_GCI_FOLDER_A_PATH_OVERRIDE{
     {System::Main, "Core", "GCIFolderAPathOverride"}, ""};
 const ConfigInfo<std::string> MAIN_GCI_FOLDER_B_PATH_OVERRIDE{
     {System::Main, "Core", "GCIFolderBPathOverride"}, ""};
+const ConfigInfo<std::string> MAIN_SCREENSHOT_PATH{
+    {System::Main, "Core", "ScreenshotPath"}, ""};
 const ConfigInfo<bool> MAIN_GCI_FOLDER_CURRENT_GAME_ONLY{
     {System::Main, "Core", "GCIFolderCurrentGameOnly"}, false};
 const ConfigInfo<bool> MAIN_CODE_SYNC_OVERRIDE{{System::Main, "Core", "CheatSyncOverride"}, false};

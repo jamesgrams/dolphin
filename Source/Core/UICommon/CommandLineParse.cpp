@@ -16,8 +16,25 @@
 #include "Core/Config/MainSettings.h"
 #include "UICommon/CommandLineParse.h"
 
+#include "DiscIO/Volume.h"
+#include "Common/NandPaths.h"
+
+class SavePathCallback : public optparse::Callback {
+  public:
+    SavePathCallback() {}
+    void operator() (const optparse::Option& option, const std::string& opt, const std::string& val, const optparse::OptionParser& parser) {
+      std::unique_ptr<DiscIO::Volume> volume(DiscIO::CreateVolume(val));
+      u64 m_title_id = volume->GetTitleID().value_or(0);
+      std::string path = Common::GetTitleDataPath(m_title_id, Common::FROM_CONFIGURED_ROOT);
+      std::cout << path << "\n";
+      std::exit(0);
+    }
+};
+SavePathCallback spc;
+
 namespace CommandLineParse
 {
+
 class CommandLineConfigLayerLoader final : public Config::ConfigLayerLoader
 {
 public:
@@ -72,6 +89,7 @@ std::unique_ptr<optparse::OptionParser> CreateParser(ParserOptions options)
   auto parser = std::make_unique<optparse::OptionParser>();
   parser->usage("usage: %prog [options]... [FILE]...").version(Common::scm_rev_str);
 
+  parser->add_option("-s", "--save-path").action("callback").callback(spc).help("Get the save path for a wii game");
   parser->add_option("-u", "--user").action("store").help("User folder path");
   parser->add_option("-m", "--movie").action("store").help("Play a movie file");
   parser->add_option("-e", "--exec")

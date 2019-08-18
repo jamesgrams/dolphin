@@ -33,6 +33,7 @@
 #include "Common/Thread.h"
 #include "Common/Timer.h"
 #include "Common/Version.h"
+#include "Common/Config/Config.h"
 
 #include "Core/Analytics.h"
 #include "Core/Boot/Boot.h"
@@ -62,6 +63,7 @@
 #include "Core/PowerPC/PowerPC.h"
 #include "Core/State.h"
 #include "Core/WiiRoot.h"
+#include "Core/Config/MainSettings.h"
 
 #ifdef USE_GDBSTUB
 #include "Core/PowerPC/GDBStub.h"
@@ -664,7 +666,11 @@ State GetState()
 static std::string GenerateScreenshotFolderPath()
 {
   const std::string& gameId = SConfig::GetInstance().GetGameID();
-  std::string path = File::GetUserPath(D_SCREENSHOTS_IDX) + gameId + DIR_SEP_CHR;
+  std::string path = Config::Get( Config::MAIN_SCREENSHOT_PATH );
+
+  if( path.empty() ) {
+    path = File::GetUserPath(D_SCREENSHOTS_IDX) + gameId + DIR_SEP_CHR;
+  }
 
   if (!File::CreateFullPath(path))
   {
