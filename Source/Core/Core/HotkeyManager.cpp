@@ -392,7 +392,7 @@ void HotkeyManager::LoadDefaults(const ControllerInterface& ciface)
   set_key_expression(HK_OPEN, CTRL + " & O");
   set_key_expression(HK_PLAY_PAUSE, NON + " & `F10`");
 #ifdef _WIN32
-  set_key_expression(HK_STOP, NON + " & ESCAPE");
+  set_key_expression(HK_STOP, "Delete & `F12`");
   set_key_expression(HK_FULLSCREEN, ALT + " & RETURN");
 #else
   set_key_expression(HK_STOP, NON + " & Escape");
@@ -402,7 +402,7 @@ void HotkeyManager::LoadDefaults(const ControllerInterface& ciface)
   set_key_expression(HK_STEP_OVER, SHIFT + " & `F10`");
   set_key_expression(HK_STEP_OUT, SHIFT + " & `F11`");
   set_key_expression(HK_BP_TOGGLE, SHIFT + " & `F9`");
-  set_key_expression(HK_SCREENSHOT, NON + " & `F9`");
+  set_key_expression(HK_SCREENSHOT, CTRL + " & S");
   set_key_expression(HK_WIIMOTE1_CONNECT, ALT + " & `F5`");
   set_key_expression(HK_WIIMOTE2_CONNECT, ALT + " & `F6`");
   set_key_expression(HK_WIIMOTE3_CONNECT, ALT + " & `F7`");
