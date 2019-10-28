@@ -392,10 +392,10 @@ void HotkeyManager::LoadDefaults(const ControllerInterface& ciface)
   set_key_expression(HK_OPEN, CTRL + " & O");
   set_key_expression(HK_PLAY_PAUSE, NON + " & `F10`");
 #ifdef _WIN32
-  set_key_expression(HK_STOP, "Delete & `F12`");
+  set_key_expression(HK_STOP, "DELETE & `F12`");
   set_key_expression(HK_FULLSCREEN, ALT + " & RETURN");
 #else
-  set_key_expression(HK_STOP, NON + " & Escape");
+  set_key_expression(HK_STOP, "Delete & `F12`");
   set_key_expression(HK_FULLSCREEN, ALT + " & Return");
 #endif
   set_key_expression(HK_STEP, NON + " & `F11`");
