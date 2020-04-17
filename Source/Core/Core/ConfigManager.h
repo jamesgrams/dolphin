@@ -18,7 +18,6 @@ class IniFile;
 
 namespace DiscIO
 {
-enum class Country;
 enum class Language;
 enum class Platform;
 enum class Region;
@@ -54,7 +53,6 @@ struct BootParameters;
 #define BACKEND_CUBEB "Cubeb"
 #define BACKEND_OPENAL "OpenAL"
 #define BACKEND_PULSEAUDIO "Pulse"
-#define BACKEND_XAUDIO2 "XAudio2"
 #define BACKEND_OPENSLES "OpenSLES"
 #define BACKEND_WASAPI _trans("WASAPI (Exclusive Mode)")
 
@@ -74,6 +72,7 @@ struct SConfig
   bool m_WiiKeyboard;
   bool m_WiimoteContinuousScanning;
   bool m_WiimoteEnableSpeaker;
+  bool connect_wiimotes_for_ciface;
 
   // ISO folder
   std::vector<std::string> m_ISOFolder;
@@ -107,6 +106,7 @@ struct SConfig
   bool bJITPairedOff = false;
   bool bJITSystemRegistersOff = false;
   bool bJITBranchOff = false;
+  bool bJITRegisterCacheOff = false;
 
   bool bFastmem;
   bool bFPRF = false;
@@ -141,7 +141,7 @@ struct SConfig
   float fSyncGpuOverclock;
 
   int SelectedLanguage = 0;
-  bool bOverrideGCLanguage = false;
+  bool bOverrideRegionSettings = false;
 
   bool bWii = false;
   bool m_is_mios = false;
@@ -168,14 +168,15 @@ struct SConfig
   std::set<std::pair<u16, u16>> m_usb_passthrough_devices;
   bool IsUSBDeviceWhitelisted(std::pair<u16, u16> vid_pid) const;
 
-  bool m_enable_signature_checks = true;
-
   // Fifo Player related settings
   bool bLoopFifoReplay = true;
 
   // Custom RTC
   bool bEnableCustomRTC;
   u32 m_customRTCValue;
+
+  // DPL2
+  bool ShouldUseDPL2Decoder() const;
 
   DiscIO::Region m_region;
 
@@ -212,6 +213,7 @@ struct SConfig
   bool SetPathsAndGameMetadata(const BootParameters& boot);
   static DiscIO::Region GetFallbackRegion();
   DiscIO::Language GetCurrentLanguage(bool wii) const;
+  DiscIO::Language GetLanguageAdjustedForRegion(bool wii, DiscIO::Region region) const;
 
   IniFile LoadDefaultGameIni() const;
   IniFile LoadLocalGameIni() const;
@@ -266,6 +268,7 @@ struct SConfig
   bool m_showTitleColumn;
   bool m_showMakerColumn;
   bool m_showFileNameColumn;
+  bool m_showFilePathColumn;
   bool m_showIDColumn;
   bool m_showRegionColumn;
   bool m_showSizeColumn;
@@ -365,7 +368,7 @@ private:
   void LoadJitDebugSettings(IniFile& ini);
 
   void SetRunningGameMetadata(const std::string& game_id, const std::string& gametdb_id,
-                              u64 title_id, u16 revision, DiscIO::Country country);
+                              u64 title_id, u16 revision, DiscIO::Region region);
 
   static SConfig* m_Instance;
 

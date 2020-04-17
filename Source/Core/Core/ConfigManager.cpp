@@ -11,6 +11,8 @@
 #include <sstream>
 #include <variant>
 
+#include <fmt/format.h>
+
 #include "AudioCommon/AudioCommon.h"
 
 #include "Common/Assert.h"
@@ -117,13 +119,13 @@ void SConfig::SaveGeneralSettings(IniFile& ini)
   general->Get("ISOPaths", &oldPaths, 0);
   for (int i = numPaths; i < oldPaths; i++)
   {
-    ini.DeleteKey("General", StringFromFormat("ISOPath%i", i));
+    ini.DeleteKey("General", fmt::format("ISOPath{}", i));
   }
 
   general->Set("ISOPaths", numPaths);
   for (int i = 0; i < numPaths; i++)
   {
-    general->Set(StringFromFormat("ISOPath%i", i), m_ISOFolder[i]);
+    general->Set(fmt::format("ISOPath{}", i), m_ISOFolder[i]);
   }
 
   general->Set("RecursiveISOPaths", m_RecursiveISOFolder);
@@ -186,6 +188,7 @@ void SConfig::SaveGameListSettings(IniFile& ini)
   gamelist->Set("ColumnTitle", m_showTitleColumn);
   gamelist->Set("ColumnNotes", m_showMakerColumn);
   gamelist->Set("ColumnFileName", m_showFileNameColumn);
+  gamelist->Set("ColumnFilePath", m_showFilePathColumn);
   gamelist->Set("ColumnID", m_showIDColumn);
   gamelist->Set("ColumnRegion", m_showRegionColumn);
   gamelist->Set("ColumnSize", m_showSizeColumn);
@@ -211,7 +214,7 @@ void SConfig::SaveCoreSettings(IniFile& ini)
   core->Set("AccurateNaNs", bAccurateNaNs);
   core->Set("EnableCheats", bEnableCheats);
   core->Set("SelectedLanguage", SelectedLanguage);
-  core->Set("OverrideGCLang", bOverrideGCLanguage);
+  core->Set("OverrideRegionSettings", bOverrideRegionSettings);
   core->Set("DPL2Decoder", bDPL2Decoder);
   core->Set("AudioLatency", iLatency);
   core->Set("AudioStretch", m_audio_stretch);
@@ -224,16 +227,18 @@ void SConfig::SaveCoreSettings(IniFile& ini)
   core->Set("BBA_MAC", m_bba_mac);
   for (int i = 0; i < SerialInterface::MAX_SI_CHANNELS; ++i)
   {
-    core->Set(StringFromFormat("SIDevice%i", i), m_SIDevice[i]);
-    core->Set(StringFromFormat("AdapterRumble%i", i), m_AdapterRumble[i]);
-    core->Set(StringFromFormat("SimulateKonga%i", i), m_AdapterKonga[i]);
+    core->Set(fmt::format("SIDevice{}", i), m_SIDevice[i]);
+    core->Set(fmt::format("AdapterRumble{}", i), m_AdapterRumble[i]);
+    core->Set(fmt::format("SimulateKonga{}", i), m_AdapterKonga[i]);
   }
   core->Set("WiiSDCard", m_WiiSDCard);
   core->Set("WiiKeyboard", m_WiiKeyboard);
   core->Set("WiimoteContinuousScanning", m_WiimoteContinuousScanning);
   core->Set("WiimoteEnableSpeaker", m_WiimoteEnableSpeaker);
+  core->Set("WiimoteControllerInterface", connect_wiimotes_for_ciface);
   core->Set("RunCompareServer", bRunCompareServer);
   core->Set("RunCompareClient", bRunCompareClient);
+  core->Set("MMU", bMMU);
   core->Set("EmulationSpeed", m_EmulationSpeed);
   core->Set("Overclock", m_OCFactor);
   core->Set("OverclockEnable", m_OCEnable);
@@ -242,7 +247,6 @@ void SConfig::SaveCoreSettings(IniFile& ini)
   core->Set("PerfMapDir", m_perfDir);
   core->Set("EnableCustomRTC", bEnableCustomRTC);
   core->Set("CustomRTCValue", m_customRTCValue);
-  core->Set("EnableSignatureChecks", m_enable_signature_checks);
 }
 
 void SConfig::SaveMovieSettings(IniFile& ini)
@@ -324,7 +328,7 @@ void SConfig::SaveUSBPassthroughSettings(IniFile& ini)
 
   std::ostringstream oss;
   for (const auto& device : m_usb_passthrough_devices)
-    oss << StringFromFormat("%04x:%04x", device.first, device.second) << ',';
+    oss << fmt::format("{:04x}:{:04x}", device.first, device.second) << ',';
   std::string devices_string = oss.str();
   if (!devices_string.empty())
     devices_string.pop_back();
@@ -353,6 +357,7 @@ void SConfig::SaveJitDebugSettings(IniFile& ini)
   section->Set("JitPairedOff", bJITPairedOff);
   section->Set("JitSystemRegistersOff", bJITSystemRegistersOff);
   section->Set("JitBranchOff", bJITBranchOff);
+  section->Set("JitRegisterCacheOff", bJITRegisterCacheOff);
 }
 
 void SConfig::LoadSettings()
@@ -400,7 +405,7 @@ void SConfig::LoadGeneralSettings(IniFile& ini)
     for (int i = 0; i < numISOPaths; i++)
     {
       std::string tmpPath;
-      general->Get(StringFromFormat("ISOPath%i", i), &tmpPath, "");
+      general->Get(fmt::format("ISOPath{}", i), &tmpPath, "");
       m_ISOFolder.push_back(std::move(tmpPath));
     }
   }
@@ -460,6 +465,7 @@ void SConfig::LoadGameListSettings(IniFile& ini)
   gamelist->Get("ColumnTitle", &m_showTitleColumn, true);
   gamelist->Get("ColumnNotes", &m_showMakerColumn, true);
   gamelist->Get("ColumnFileName", &m_showFileNameColumn, false);
+  gamelist->Get("ColumnFilePath", &m_showFilePathColumn, false);
   gamelist->Get("ColumnID", &m_showIDColumn, false);
   gamelist->Get("ColumnRegion", &m_showRegionColumn, true);
   gamelist->Get("ColumnSize", &m_showSizeColumn, true);
@@ -486,7 +492,7 @@ void SConfig::LoadCoreSettings(IniFile& ini)
   core->Get("SyncOnSkipIdle", &bSyncGPUOnSkipIdleHack, true);
   core->Get("EnableCheats", &bEnableCheats, false);
   core->Get("SelectedLanguage", &SelectedLanguage, 0);
-  core->Get("OverrideGCLang", &bOverrideGCLanguage, false);
+  core->Get("OverrideRegionSettings", &bOverrideRegionSettings, false);
   core->Get("DPL2Decoder", &bDPL2Decoder, false);
   core->Get("AudioLatency", &iLatency, 20);
   core->Get("AudioStretch", &m_audio_stretch, false);
@@ -497,17 +503,18 @@ void SConfig::LoadCoreSettings(IniFile& ini)
   core->Get("SlotB", (int*)&m_EXIDevice[1], ExpansionInterface::EXIDEVICE_NONE);
   core->Get("SerialPort1", (int*)&m_EXIDevice[2], ExpansionInterface::EXIDEVICE_NONE);
   core->Get("BBA_MAC", &m_bba_mac);
-  for (int i = 0; i < SerialInterface::MAX_SI_CHANNELS; ++i)
+  for (size_t i = 0; i < std::size(m_SIDevice); ++i)
   {
-    core->Get(StringFromFormat("SIDevice%i", i), (u32*)&m_SIDevice[i],
+    core->Get(fmt::format("SIDevice{}", i), &m_SIDevice[i],
               (i == 0) ? SerialInterface::SIDEVICE_GC_CONTROLLER : SerialInterface::SIDEVICE_NONE);
-    core->Get(StringFromFormat("AdapterRumble%i", i), &m_AdapterRumble[i], true);
-    core->Get(StringFromFormat("SimulateKonga%i", i), &m_AdapterKonga[i], false);
+    core->Get(fmt::format("AdapterRumble{}", i), &m_AdapterRumble[i], true);
+    core->Get(fmt::format("SimulateKonga{}", i), &m_AdapterKonga[i], false);
   }
-  core->Get("WiiSDCard", &m_WiiSDCard, false);
+  core->Get("WiiSDCard", &m_WiiSDCard, true);
   core->Get("WiiKeyboard", &m_WiiKeyboard, false);
   core->Get("WiimoteContinuousScanning", &m_WiimoteContinuousScanning, false);
   core->Get("WiimoteEnableSpeaker", &m_WiimoteEnableSpeaker, false);
+  core->Get("WiimoteControllerInterface", &connect_wiimotes_for_ciface, false);
   core->Get("RunCompareServer", &bRunCompareServer, false);
   core->Get("RunCompareClient", &bRunCompareClient, false);
   core->Get("MMU", &bMMU, bMMU);
@@ -529,7 +536,6 @@ void SConfig::LoadCoreSettings(IniFile& ini)
   core->Get("EnableCustomRTC", &bEnableCustomRTC, false);
   // Default to seconds between 1.1.1970 and 1.1.2000
   core->Get("CustomRTCValue", &m_customRTCValue, 946684800);
-  core->Get("EnableSignatureChecks", &m_enable_signature_checks, true);
 }
 
 void SConfig::LoadMovieSettings(IniFile& ini)
@@ -646,11 +652,12 @@ void SConfig::LoadJitDebugSettings(IniFile& ini)
   section->Get("JitPairedOff", &bJITPairedOff, false);
   section->Get("JitSystemRegistersOff", &bJITSystemRegistersOff, false);
   section->Get("JitBranchOff", &bJITBranchOff, false);
+  section->Get("JitRegisterCacheOff", &bJITRegisterCacheOff, false);
 }
 
 void SConfig::ResetRunningGameMetadata()
 {
-  SetRunningGameMetadata("00000000", "", 0, 0, DiscIO::Country::Unknown);
+  SetRunningGameMetadata("00000000", "", 0, 0, DiscIO::Region::Unknown);
 }
 
 void SConfig::SetRunningGameMetadata(const DiscIO::Volume& volume,
@@ -660,13 +667,13 @@ void SConfig::SetRunningGameMetadata(const DiscIO::Volume& volume,
   {
     SetRunningGameMetadata(volume.GetGameID(), volume.GetGameTDBID(),
                            volume.GetTitleID().value_or(0), volume.GetRevision().value_or(0),
-                           volume.GetCountry());
+                           volume.GetRegion());
   }
   else
   {
     SetRunningGameMetadata(volume.GetGameID(partition), volume.GetGameTDBID(),
                            volume.GetTitleID(partition).value_or(0),
-                           volume.GetRevision(partition).value_or(0), volume.GetCountry());
+                           volume.GetRevision(partition).value_or(0), volume.GetRegion());
   }
 }
 
@@ -682,15 +689,13 @@ void SConfig::SetRunningGameMetadata(const IOS::ES::TMDReader& tmd, DiscIO::Plat
       !DVDInterface::UpdateRunningGameMetadata(tmd_title_id))
   {
     // If not launching a disc game, just read everything from the TMD.
-    const DiscIO::Country country = DiscIO::CountryCodeToCountry(
-        static_cast<u8>(tmd_title_id), platform, tmd.GetRegion(), tmd.GetTitleVersion());
     SetRunningGameMetadata(tmd.GetGameID(), tmd.GetGameTDBID(), tmd_title_id, tmd.GetTitleVersion(),
-                           country);
+                           tmd.GetRegion());
   }
 }
 
 void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::string& gametdb_id,
-                                     u64 title_id, u16 revision, DiscIO::Country country)
+                                     u64 title_id, u16 revision, DiscIO::Region region)
 {
   const bool was_changed = m_game_id != game_id || m_gametdb_id != gametdb_id ||
                            m_title_id != title_id || m_revision != revision;
@@ -706,7 +711,7 @@ void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::stri
   else if (title_id != 0)
   {
     m_debugger_game_id =
-        StringFromFormat("%08X_%08X", static_cast<u32>(title_id >> 32), static_cast<u32>(title_id));
+        fmt::format("{:08X}_{:08X}", static_cast<u32>(title_id >> 32), static_cast<u32>(title_id));
   }
   else
   {
@@ -723,9 +728,7 @@ void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::stri
   }
 
   const Core::TitleDatabase title_database;
-  const DiscIO::Language language = !bWii && country == DiscIO::Country::Japan ?
-                                        DiscIO::Language::Japanese :
-                                        GetCurrentLanguage(bWii);
+  const DiscIO::Language language = GetLanguageAdjustedForRegion(bWii, region);
   m_title_description = title_database.Describe(m_gametdb_id, language);
   NOTICE_LOG(CORE, "Active title: %s", m_title_description.c_str());
   Host_TitleChanged();
@@ -771,18 +774,14 @@ void SConfig::LoadDefaults()
   bFastmem = true;
   bFPRF = false;
   bAccurateNaNs = false;
-#ifdef _M_X86_64
-  bMMU = true;
-#else
   bMMU = false;
-#endif
   bLowDCBZHack = false;
   iBBDumpPort = -1;
   bSyncGPU = false;
   bFastDiscSpeed = false;
   bEnableMemcardSdWriting = true;
   SelectedLanguage = 0;
-  bOverrideGCLanguage = false;
+  bOverrideRegionSettings = false;
   bWii = false;
   bDPL2Decoder = false;
   iLatency = 20;
@@ -806,6 +805,7 @@ void SConfig::LoadDefaults()
   bJITPairedOff = false;
   bJITSystemRegistersOff = false;
   bJITBranchOff = false;
+  bJITRegisterCacheOff = false;
 
   ResetRunningGameMetadata();
 }
@@ -995,6 +995,40 @@ DiscIO::Language SConfig::GetCurrentLanguage(bool wii) const
   return language;
 }
 
+DiscIO::Language SConfig::GetLanguageAdjustedForRegion(bool wii, DiscIO::Region region) const
+{
+  const DiscIO::Language language = GetCurrentLanguage(wii);
+
+  if (!wii && region == DiscIO::Region::NTSC_K)
+    region = DiscIO::Region::NTSC_J;  // NTSC-K only exists on Wii, so use a fallback
+
+  if (!wii && region == DiscIO::Region::NTSC_J && language == DiscIO::Language::English)
+    return DiscIO::Language::Japanese;  // English and Japanese both use the value 0 in GC SRAM
+
+  if (!bOverrideRegionSettings)
+  {
+    if (region == DiscIO::Region::NTSC_J)
+      return DiscIO::Language::Japanese;
+
+    if (region == DiscIO::Region::NTSC_U && language != DiscIO::Language::English &&
+        (!wii || (language != DiscIO::Language::French && language != DiscIO::Language::Spanish)))
+    {
+      return DiscIO::Language::English;
+    }
+
+    if (region == DiscIO::Region::PAL &&
+        (language < DiscIO::Language::English || language > DiscIO::Language::Dutch))
+    {
+      return DiscIO::Language::English;
+    }
+
+    if (region == DiscIO::Region::NTSC_K)
+      return DiscIO::Language::Korean;
+  }
+
+  return language;
+}
+
 IniFile SConfig::LoadDefaultGameIni() const
 {
   return LoadDefaultGameIni(GetGameID(), m_revision);
@@ -1034,4 +1068,9 @@ IniFile SConfig::LoadGameIni(const std::string& id, std::optional<u16> revision)
   for (const std::string& filename : ConfigLoaders::GetGameIniFilenames(id, revision))
     game_ini.Load(File::GetUserPath(D_GAMESETTINGS_IDX) + filename, true);
   return game_ini;
+}
+
+bool SConfig::ShouldUseDPL2Decoder() const
+{
+  return bDPL2Decoder && !bDSPHLE;
 }

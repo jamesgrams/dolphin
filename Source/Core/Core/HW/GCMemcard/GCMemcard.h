@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -22,11 +24,6 @@ namespace File
 class IOFile;
 }
 
-#define BE64(x) (Common::swap64(x))
-#define BE32(x) (Common::swap32(x))
-#define BE16(x) (Common::swap16(x))
-#define ArrayByteSwap(a) (ByteSwap(a, a + sizeof(u8)));
-
 enum
 {
   SLOT_A = 0,
@@ -34,10 +31,6 @@ enum
   GCI = 0,
   SAV = 0x80,
   GCS = 0x110,
-
-  CI8SHARED = 1,
-  RGB5A3,
-  CI8,
 };
 
 enum class GCMemcardGetSaveDataRetVal
@@ -79,6 +72,37 @@ enum class GCMemcardRemoveFileRetVal
   DELETE_FAIL,
 };
 
+enum class GCMemcardValidityIssues
+{
+  FAILED_TO_OPEN,
+  IO_ERROR,
+  INVALID_CARD_SIZE,
+  INVALID_CHECKSUM,
+  MISMATCHED_CARD_SIZE,
+  FREE_BLOCK_MISMATCH,
+  DIR_BAT_INCONSISTENT,
+  DATA_IN_UNUSED_AREA,
+  COUNT
+};
+
+class GCMemcardErrorCode
+{
+public:
+  bool HasCriticalErrors() const;
+  bool Test(GCMemcardValidityIssues code) const;
+  void Set(GCMemcardValidityIssues code);
+  GCMemcardErrorCode& operator|=(const GCMemcardErrorCode& other);
+
+private:
+  std::bitset<static_cast<size_t>(GCMemcardValidityIssues::COUNT)> m_errors;
+};
+
+struct GCMemcardAnimationFrameRGBA8
+{
+  std::vector<u32> image_data;
+  u8 delay;
+};
+
 // size of a single memory card block in bytes
 constexpr u32 BLOCK_SIZE = 0x2000;
 
@@ -91,7 +115,7 @@ constexpr u32 MC_FST_BLOCKS = 0x05;
 // maximum number of saves that can be stored on a single memory card
 constexpr u8 DIRLEN = 0x7F;
 
-// maximum size of memory card file comment in bytes
+// maximum size of a single memory card file comment in bytes
 constexpr u32 DENTRY_STRLEN = 0x20;
 
 // size of a single entry in the Directory in bytes
@@ -103,17 +127,41 @@ constexpr u16 BAT_SIZE = 0xFFB;
 // possible sizes of memory cards in megabits
 // TODO: Do memory card sizes have to be power of two?
 // TODO: Are these all of them? A 4091 block card should work in theory at least.
-constexpr u16 MemCard59Mb = 0x04;
-constexpr u16 MemCard123Mb = 0x08;
-constexpr u16 MemCard251Mb = 0x10;
-constexpr u16 Memcard507Mb = 0x20;
-constexpr u16 MemCard1019Mb = 0x40;
-constexpr u16 MemCard2043Mb = 0x80;
+constexpr u16 MBIT_SIZE_MEMORY_CARD_59 = 0x04;
+constexpr u16 MBIT_SIZE_MEMORY_CARD_123 = 0x08;
+constexpr u16 MBIT_SIZE_MEMORY_CARD_251 = 0x10;
+constexpr u16 MBIT_SIZE_MEMORY_CARD_507 = 0x20;
+constexpr u16 MBIT_SIZE_MEMORY_CARD_1019 = 0x40;
+constexpr u16 MBIT_SIZE_MEMORY_CARD_2043 = 0x80;
+
+// width and height of a save file's banner in pixels
+constexpr u32 MEMORY_CARD_BANNER_WIDTH = 96;
+constexpr u32 MEMORY_CARD_BANNER_HEIGHT = 32;
+
+// color format of banner as stored in the lowest two bits of m_banner_and_icon_flags
+constexpr u8 MEMORY_CARD_BANNER_FORMAT_CI8 = 1;
+constexpr u8 MEMORY_CARD_BANNER_FORMAT_RGB5A3 = 2;
+
+// width and height of a save file's icon in pixels
+constexpr u32 MEMORY_CARD_ICON_WIDTH = 32;
+constexpr u32 MEMORY_CARD_ICON_HEIGHT = 32;
+
+// maximum number of frames a save file's icon animation can have
+constexpr u32 MEMORY_CARD_ICON_ANIMATION_MAX_FRAMES = 8;
+
+// color format of icon frame as stored in m_icon_format (two bits per frame)
+constexpr u8 MEMORY_CARD_ICON_FORMAT_CI8_SHARED_PALETTE = 1;
+constexpr u8 MEMORY_CARD_ICON_FORMAT_RGB5A3 = 2;
+constexpr u8 MEMORY_CARD_ICON_FORMAT_CI8_UNIQUE_PALETTE = 3;
+
+// number of palette entries in a CI8 palette of a banner or icon
+// each palette entry is 16 bits in RGB5A3 format
+constexpr u32 MEMORY_CARD_CI8_PALETTE_ENTRIES = 256;
 
 class MemoryCardBase
 {
 public:
-  explicit MemoryCardBase(int card_index = 0, int size_mbits = MemCard2043Mb)
+  explicit MemoryCardBase(int card_index = 0, int size_mbits = MBIT_SIZE_MEMORY_CARD_2043)
       : m_card_index(card_index), m_nintendo_card_id(size_mbits)
   {
   }
@@ -185,13 +233,16 @@ struct Header
   // 0x1e00 bytes at 0x0200: Unused (0xff)
   std::array<u8, 7680> m_unused_2;
 
-  explicit Header(int slot = 0, u16 size_mbits = MemCard2043Mb, bool shift_jis = false);
+  explicit Header(int slot = 0, u16 size_mbits = MBIT_SIZE_MEMORY_CARD_2043,
+                  bool shift_jis = false);
 
   // Calculates the card serial numbers used for encrypting some save files.
   std::pair<u32, u32> CalculateSerial() const;
 
   void FixChecksums();
   std::pair<u16, u16> CalculateChecksums() const;
+
+  GCMemcardErrorCode CheckForErrors(u16 card_size_mbits) const;
 };
 static_assert(sizeof(Header) == BLOCK_SIZE);
 
@@ -214,15 +265,13 @@ struct DEntry
   u8 m_unused_1;
 
   // 1 byte at 0x07: banner gfx format and icon animation (Image Key)
-  //      Bit(s)  Description
-  //      2       Icon Animation 0: forward 1: ping-pong
-  //      1       [--0: No Banner 1: Banner present--] WRONG! YAGCD LIES!
-  //      0       [--Banner Color 0: RGB5A3 1: CI8--]  WRONG! YAGCD LIES!
-  //      bits 0 and 1: image format
-  //      00 no banner
-  //      01 CI8 banner
-  //      10 RGB5A3 banner
-  //      11 ? maybe ==00? Time Splitters 2 and 3 have it and don't have banner
+  // First two bits are used for the banner format.
+  // YAGCD is wrong about the meaning of these.
+  // '0' and '3' both mean no banner.
+  // '1' means paletted (8 bits per pixel palette entry + 16 bit color palette in RGB5A3)
+  // '2' means direct color (16 bits per pixel in RGB5A3)
+  // Third bit is icon animation frame order, 0 for loop (abcabcabc), 1 for ping-pong (abcbabcba).
+  // Remaining bits seem unused.
   u8 m_banner_and_icon_flags;
 
   // 0x20 bytes at 0x08: Filename
@@ -274,6 +323,8 @@ struct DEntry
 };
 static_assert(sizeof(DEntry) == DENTRY_SIZE);
 
+struct BlockAlloc;
+
 struct Directory
 {
   // 127 files of 0x40 bytes each
@@ -283,8 +334,7 @@ struct Directory
   std::array<u8, 0x3a> m_padding;
 
   // 2 bytes at 0x1ffa: Update Counter
-  // TODO: What happens if this overflows? Is there a special case for preferring 0 over max value?
-  Common::BigEndianValue<u16> m_update_counter;
+  Common::BigEndianValue<s16> m_update_counter;
 
   // 2 bytes at 0x1ffc: Additive Checksum
   u16 m_checksum;
@@ -301,6 +351,10 @@ struct Directory
 
   void FixChecksums();
   std::pair<u16, u16> CalculateChecksums() const;
+
+  GCMemcardErrorCode CheckForErrors() const;
+
+  GCMemcardErrorCode CheckForErrorsWithBat(const BlockAlloc& bat) const;
 };
 static_assert(sizeof(Directory) == BLOCK_SIZE);
 
@@ -313,7 +367,7 @@ struct BlockAlloc
   u16 m_checksum_inv;
 
   // 2 bytes at 0x0004: Update Counter
-  Common::BigEndianValue<u16> m_update_counter;
+  Common::BigEndianValue<s16> m_update_counter;
 
   // 2 bytes at 0x0006: Free Blocks
   Common::BigEndianValue<u16> m_free_blocks;
@@ -324,7 +378,7 @@ struct BlockAlloc
   // 0x1ff8 bytes at 0x000a: Map of allocated Blocks
   std::array<Common::BigEndianValue<u16>, BAT_SIZE> m_map;
 
-  explicit BlockAlloc(u16 size_mbits = MemCard2043Mb);
+  explicit BlockAlloc(u16 size_mbits = MBIT_SIZE_MEMORY_CARD_2043);
 
   u16 GetNextBlock(u16 block) const;
   u16 NextFreeBlock(u16 max_block, u16 starting_block = MC_FST_BLOCKS) const;
@@ -333,6 +387,8 @@ struct BlockAlloc
 
   void FixChecksums();
   std::pair<u16, u16> CalculateChecksums() const;
+
+  GCMemcardErrorCode CheckForErrors(u16 size_mbits) const;
 };
 static_assert(sizeof(BlockAlloc) == BLOCK_SIZE);
 #pragma pack(pop)
@@ -354,8 +410,9 @@ private:
   int m_active_directory;
   int m_active_bat;
 
+  GCMemcard();
+
   GCMemcardImportFileRetVal ImportGciInternal(File::IOFile&& gci, const std::string& inputFile);
-  void InitActiveDirBat();
 
   const Directory& GetActiveDirectory() const;
   const BlockAlloc& GetActiveBat() const;
@@ -364,8 +421,9 @@ private:
   void UpdateBat(const BlockAlloc& bat);
 
 public:
-  explicit GCMemcard(const std::string& fileName, bool forceCreation = false,
-                     bool shift_jis = false);
+  static std::optional<GCMemcard> Create(std::string filename, u16 size_mbits, bool shift_jis);
+
+  static std::pair<GCMemcardErrorCode, std::optional<GCMemcard>> Open(std::string filename);
 
   GCMemcard(const GCMemcard&) = delete;
   GCMemcard& operator=(const GCMemcard&) = delete;
@@ -375,14 +433,14 @@ public:
   bool IsValid() const { return m_valid; }
   bool IsShiftJIS() const;
   bool Save();
-  bool Format(bool shift_jis = false, u16 SizeMb = MemCard2043Mb);
-  static bool Format(u8* card_data, bool shift_jis = false, u16 SizeMb = MemCard2043Mb);
+  bool Format(bool shift_jis = false, u16 SizeMb = MBIT_SIZE_MEMORY_CARD_2043);
+  static bool Format(u8* card_data, bool shift_jis = false,
+                     u16 SizeMb = MBIT_SIZE_MEMORY_CARD_2043);
   static s32 FZEROGX_MakeSaveGameValid(const Header& cardheader, const DEntry& direntry,
                                        std::vector<GCMBlock>& FileBuffer);
   static s32 PSO_MakeSaveGameValid(const Header& cardheader, const DEntry& direntry,
                                    std::vector<GCMBlock>& FileBuffer);
 
-  u32 TestChecksums() const;
   bool FixChecksums();
 
   // get number of file entries in the directory
@@ -400,6 +458,7 @@ public:
   std::string DEntry_GameCode(u8 index) const;
   std::string DEntry_Makercode(u8 index) const;
   std::string DEntry_BIFlags(u8 index) const;
+  bool DEntry_IsPingPong(u8 index) const;
   std::string DEntry_FileName(u8 index) const;
   u32 DEntry_ModTime(u8 index) const;
   u32 DEntry_ImageOffset(u8 index) const;
@@ -411,9 +470,15 @@ public:
   u16 DEntry_FirstBlock(u8 index) const;
   // get file length in blocks
   u16 DEntry_BlockCount(u8 index) const;
-  u32 DEntry_CommentsAddress(u8 index) const;
-  std::string GetSaveComment1(u8 index) const;
-  std::string GetSaveComment2(u8 index) const;
+
+  std::optional<std::vector<u8>>
+  GetSaveDataBytes(u8 save_index, size_t offset = 0,
+                   size_t length = std::numeric_limits<size_t>::max()) const;
+
+  // Returns, if available, the two strings shown on the save file in the GC BIOS, in UTF8.
+  // The first is the big line on top, usually the game title, and the second is the smaller line
+  // next to the block size, often a progress indicator or subtitle.
+  std::optional<std::pair<std::string, std::string>> GetSaveComments(u8 index) const;
 
   // Fetches a DEntry from the given file index.
   std::optional<DEntry> GetDEntry(u8 index) const;
@@ -441,8 +506,8 @@ public:
   static void Gcs_SavConvert(DEntry& tempDEntry, int saveType, u64 length = BLOCK_SIZE);
 
   // reads the banner image
-  bool ReadBannerRGBA8(u8 index, u32* buffer) const;
+  std::optional<std::vector<u32>> ReadBannerRGBA8(u8 index) const;
 
   // reads the animation frames
-  u32 ReadAnimRGBA8(u8 index, u32* buffer, u8* delays) const;
+  std::optional<std::vector<GCMemcardAnimationFrameRGBA8>> ReadAnimRGBA8(u8 index) const;
 };

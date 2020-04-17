@@ -16,8 +16,10 @@
 #include "Common/Thread.h"
 
 #include "Core/Config/GraphicsSettings.h"
+#include "Core/Config/UISettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
+#include "Core/Host.h"
 #include "Core/HotkeyManager.h"
 #include "Core/IOS/IOS.h"
 #include "Core/IOS/USB/Bluetooth/BTBase.h"
@@ -25,6 +27,7 @@
 
 #include "DolphinQt/Settings.h"
 
+#include "InputCommon/ControlReference/ControlReference.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 
 #include "VideoCommon/OnScreenDisplay.h"
@@ -134,15 +137,21 @@ void HotkeyScheduler::Run()
   {
     Common::SleepCurrentThread(1000 / 60);
 
-    if (!HotkeyManagerEmu::IsEnabled())
-      continue;
-
     if (Core::GetState() == Core::State::Uninitialized || Core::GetState() == Core::State::Paused)
       g_controller_interface.UpdateInput();
 
+    if (!HotkeyManagerEmu::IsEnabled())
+      continue;
+
     if (Core::GetState() != Core::State::Stopping)
     {
+      // Obey window focus (config permitting) before checking hotkeys.
+      Core::UpdateInputGate(Config::Get(Config::MAIN_FOCUSED_HOTKEYS));
+
       HotkeyManagerEmu::GetStatus();
+
+      // Everything else on the host thread (controller config dialog) should always get input.
+      ControlReference::SetInputGate(true);
 
       if (!Core::IsRunningAndStarted())
         continue;
@@ -302,8 +311,7 @@ void HotkeyScheduler::Run()
         OSD::AddMessage(std::string("Volume: ") +
                         (SConfig::GetInstance().m_IsMuted ?
                              "Muted" :
-                             std::to_string(SConfig::GetInstance().m_Volume)) +
-                        "%");
+                             std::to_string(SConfig::GetInstance().m_Volume) + "%"));
       };
 
       // Volume
@@ -497,30 +505,16 @@ void HotkeyScheduler::Run()
           Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
         }
       }
-
-      if (IsHotkey(HK_TOGGLE_STEREO_3DVISION))
-      {
-        if (Config::Get(Config::GFX_STEREO_MODE) != StereoMode::Nvidia3DVision)
-        {
-          if (Config::Get(Config::GFX_ENHANCE_POST_SHADER) == DUBOIS_ALGORITHM_SHADER)
-            Config::SetCurrent(Config::GFX_ENHANCE_POST_SHADER, "");
-
-          Config::SetCurrent(Config::GFX_STEREO_MODE, StereoMode::Nvidia3DVision);
-        }
-        else
-        {
-          Config::SetCurrent(Config::GFX_STEREO_MODE, StereoMode::Off);
-        }
-      }
     }
 
     const auto stereo_depth = Config::Get(Config::GFX_STEREO_DEPTH);
 
     if (IsHotkey(HK_DECREASE_DEPTH, true))
-      Config::SetCurrent(Config::GFX_STEREO_DEPTH, std::min(stereo_depth - 1, 0));
+      Config::SetCurrent(Config::GFX_STEREO_DEPTH, std::max(stereo_depth - 1, 0));
 
     if (IsHotkey(HK_INCREASE_DEPTH, true))
-      Config::SetCurrent(Config::GFX_STEREO_DEPTH, std::min(stereo_depth + 1, 100));
+      Config::SetCurrent(Config::GFX_STEREO_DEPTH,
+                         std::min(stereo_depth + 1, Config::GFX_STEREO_DEPTH_MAXIMUM));
 
     const auto stereo_convergence = Config::Get(Config::GFX_STEREO_CONVERGENCE);
 
@@ -528,10 +522,18 @@ void HotkeyScheduler::Run()
       Config::SetCurrent(Config::GFX_STEREO_CONVERGENCE, std::max(stereo_convergence - 5, 0));
 
     if (IsHotkey(HK_INCREASE_CONVERGENCE, true))
-      Config::SetCurrent(Config::GFX_STEREO_CONVERGENCE, std::min(stereo_convergence + 5, 500));
+      Config::SetCurrent(Config::GFX_STEREO_CONVERGENCE,
+                         std::min(stereo_convergence + 5, Config::GFX_STEREO_CONVERGENCE_MAXIMUM));
 
     // Freelook
     static float fl_speed = 1.0;
+
+    if (IsHotkey(HK_FREELOOK_TOGGLE))
+    {
+      const bool new_value = !Config::Get(Config::GFX_FREE_LOOK);
+      Config::SetCurrent(Config::GFX_FREE_LOOK, new_value);
+      OSD::AddMessage(StringFromFormat("Freelook: %s", new_value ? "Enabled" : "Disabled"));
+    }
 
     if (IsHotkey(HK_FREELOOK_DECREASE_SPEED, true))
       fl_speed /= 1.1f;

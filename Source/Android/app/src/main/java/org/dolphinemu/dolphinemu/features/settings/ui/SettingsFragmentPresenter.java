@@ -3,7 +3,6 @@ package org.dolphinemu.dolphinemu.features.settings.ui;
 import android.os.Bundle;
 import android.text.TextUtils;
 
-import org.dolphinemu.dolphinemu.DolphinApplication;
 import org.dolphinemu.dolphinemu.NativeLibrary;
 import org.dolphinemu.dolphinemu.R;
 import org.dolphinemu.dolphinemu.features.settings.model.BooleanSetting;
@@ -13,19 +12,22 @@ import org.dolphinemu.dolphinemu.features.settings.model.SettingSection;
 import org.dolphinemu.dolphinemu.features.settings.model.Settings;
 import org.dolphinemu.dolphinemu.features.settings.model.StringSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.view.CheckBoxSetting;
+import org.dolphinemu.dolphinemu.features.settings.model.view.ConfirmRunnable;
+import org.dolphinemu.dolphinemu.features.settings.model.view.FilePicker;
 import org.dolphinemu.dolphinemu.features.settings.model.view.HeaderSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.view.InputBindingSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.view.RumbleBindingSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.view.SettingsItem;
 import org.dolphinemu.dolphinemu.features.settings.model.view.SingleChoiceSetting;
+import org.dolphinemu.dolphinemu.features.settings.model.view.SingleChoiceSettingDynamicDescriptions;
 import org.dolphinemu.dolphinemu.features.settings.model.view.SliderSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.view.StringSingleChoiceSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.view.SubmenuSetting;
 import org.dolphinemu.dolphinemu.features.settings.utils.SettingsFile;
+import org.dolphinemu.dolphinemu.ui.main.MainPresenter;
 import org.dolphinemu.dolphinemu.utils.DirectoryInitialization;
 import org.dolphinemu.dolphinemu.utils.EGLHelper;
 import org.dolphinemu.dolphinemu.utils.Log;
-import org.dolphinemu.dolphinemu.utils.TvUtil;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -69,8 +71,9 @@ public final class SettingsFragmentPresenter
     }
   }
 
-  public void onViewCreated(Settings settings)
+  public void onViewCreated(MenuTag menuTag, Settings settings)
   {
+    this.mMenuTag = menuTag;
     setSettings(settings);
   }
 
@@ -131,6 +134,10 @@ public final class SettingsFragmentPresenter
 
       case CONFIG_INTERFACE:
         addInterfaceSettings(sl);
+        break;
+
+      case CONFIG_PATHS:
+        addPathsSettings(sl);
         break;
 
       case CONFIG_GAME_CUBE:
@@ -203,6 +210,7 @@ public final class SettingsFragmentPresenter
   {
     sl.add(new SubmenuSetting(null, null, R.string.general_submenu, 0, MenuTag.CONFIG_GENERAL));
     sl.add(new SubmenuSetting(null, null, R.string.interface_submenu, 0, MenuTag.CONFIG_INTERFACE));
+    sl.add(new SubmenuSetting(null, null, R.string.paths_submenu, 0, MenuTag.CONFIG_PATHS));
 
     sl.add(new SubmenuSetting(null, null, R.string.gamecube_submenu, 0, MenuTag.CONFIG_GAME_CUBE));
     sl.add(new SubmenuSetting(null, null, R.string.wii_submenu, 0, MenuTag.CONFIG_WII));
@@ -218,12 +226,14 @@ public final class SettingsFragmentPresenter
     Setting overclock = null;
     Setting speedLimit = null;
     Setting audioStretch = null;
+    Setting audioVolume = null;
+    Setting overrideRegionSettings = null;
     Setting autoDiscChange = null;
     Setting analytics = null;
     Setting enableSaveState;
-    Setting lockToLandscape;
 
     SettingSection coreSection = mSettings.getSection(Settings.SECTION_INI_CORE);
+    SettingSection dspSection = mSettings.getSection(Settings.SECTION_INI_DSP);
     SettingSection analyticsSection = mSettings.getSection(Settings.SECTION_ANALYTICS);
     cpuCore = coreSection.getSetting(SettingsFile.KEY_CPU_CORE);
     dualCore = coreSection.getSetting(SettingsFile.KEY_DUAL_CORE);
@@ -231,10 +241,11 @@ public final class SettingsFragmentPresenter
     overclock = coreSection.getSetting(SettingsFile.KEY_OVERCLOCK_PERCENT);
     speedLimit = coreSection.getSetting(SettingsFile.KEY_SPEED_LIMIT);
     audioStretch = coreSection.getSetting(SettingsFile.KEY_AUDIO_STRETCH);
+    audioVolume = dspSection.getSetting(SettingsFile.KEY_AUDIO_VOLUME);
+    overrideRegionSettings = coreSection.getSetting(SettingsFile.KEY_OVERRIDE_REGION_SETTINGS);
     autoDiscChange = coreSection.getSetting(SettingsFile.KEY_AUTO_DISC_CHANGE);
     analytics = analyticsSection.getSetting(SettingsFile.KEY_ANALYTICS_ENABLED);
     enableSaveState = coreSection.getSetting(SettingsFile.KEY_ENABLE_SAVE_STATES);
-    lockToLandscape = coreSection.getSetting(SettingsFile.KEY_LOCK_LANDSCAPE);
 
     // TODO: Having different emuCoresEntries/emuCoresValues for each architecture is annoying.
     // The proper solution would be to have one emuCoresEntries and one emuCoresValues
@@ -271,17 +282,16 @@ public final class SettingsFragmentPresenter
             R.string.speed_limit, 0, 200, "%", 100, speedLimit));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_AUDIO_STRETCH, Settings.SECTION_INI_CORE,
             R.string.audio_stretch, R.string.audio_stretch_description, false, audioStretch));
+    sl.add(new SliderSetting(SettingsFile.KEY_AUDIO_VOLUME, Settings.SECTION_INI_DSP,
+            R.string.audio_volume, 0, 100, "%", 100, audioVolume));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_OVERRIDE_REGION_SETTINGS,
+            Settings.SECTION_INI_CORE, R.string.override_region_settings, 0, false,
+            overrideRegionSettings));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_AUTO_DISC_CHANGE, Settings.SECTION_INI_CORE,
             R.string.auto_disc_change, 0, false, autoDiscChange));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_ENABLE_SAVE_STATES, Settings.SECTION_INI_CORE,
             R.string.enable_save_states, R.string.enable_save_states_description, false,
             enableSaveState));
-    if (!TvUtil.isLeanback(DolphinApplication.getAppContext()))
-    {
-      sl.add(new CheckBoxSetting(SettingsFile.KEY_LOCK_LANDSCAPE, Settings.SECTION_INI_CORE,
-              R.string.lock_emulation_landscape, R.string.lock_emulation_landscape_desc, true,
-              lockToLandscape));
-    }
     sl.add(new CheckBoxSetting(SettingsFile.KEY_ANALYTICS_ENABLED, Settings.SECTION_ANALYTICS,
             R.string.analytics, 0, false, analytics));
   }
@@ -303,25 +313,61 @@ public final class SettingsFragmentPresenter
             onScreenDisplayMessages));
   }
 
+  private void addPathsSettings(ArrayList<SettingsItem> sl)
+  {
+    Setting defaultISO = null;
+    Setting NANDRootPath = null;
+    Setting dumpPath = null;
+    Setting loadPath = null;
+    Setting resourcePackPath = null;
+    Setting wiiSDCardPath = null;
+
+    SettingSection coreSection = mSettings.getSection(Settings.SECTION_INI_CORE);
+    SettingSection generalSection = mSettings.getSection(Settings.SECTION_INI_GENERAL);
+    defaultISO = coreSection.getSetting(SettingsFile.KEY_DEFAULT_ISO);
+    NANDRootPath = generalSection.getSetting(SettingsFile.KEY_NAND_ROOT_PATH);
+    dumpPath = generalSection.getSetting(SettingsFile.KEY_DUMP_PATH);
+    loadPath = generalSection.getSetting(SettingsFile.KEY_LOAD_PATH);
+    resourcePackPath = generalSection.getSetting(SettingsFile.KEY_RESOURCE_PACK_PATH);
+    wiiSDCardPath = generalSection.getSetting(SettingsFile.KEY_WII_SD_CARD_PATH);
+
+    sl.add(new FilePicker(SettingsFile.FILE_NAME_DOLPHIN, SettingsFile.KEY_DEFAULT_ISO,
+            Settings.SECTION_INI_CORE, R.string.default_ISO, 0, "",
+            MainPresenter.REQUEST_GAME_FILE, defaultISO));
+    sl.add(new FilePicker(SettingsFile.FILE_NAME_DOLPHIN, SettingsFile.KEY_NAND_ROOT_PATH,
+            Settings.SECTION_INI_GENERAL, R.string.wii_NAND_root, 0, getDefaultNANDRootPath(),
+            MainPresenter.REQUEST_DIRECTORY, NANDRootPath));
+    sl.add(new FilePicker(SettingsFile.FILE_NAME_DOLPHIN, SettingsFile.KEY_DUMP_PATH,
+            Settings.SECTION_INI_GENERAL, R.string.dump_path, 0, getDefaultDumpPath(),
+            MainPresenter.REQUEST_DIRECTORY, dumpPath));
+    sl.add(new FilePicker(SettingsFile.FILE_NAME_DOLPHIN, SettingsFile.KEY_LOAD_PATH,
+            Settings.SECTION_INI_GENERAL, R.string.load_path, 0, getDefaultLoadPath(),
+            MainPresenter.REQUEST_DIRECTORY, loadPath));
+    sl.add(new FilePicker(SettingsFile.FILE_NAME_DOLPHIN, SettingsFile.KEY_RESOURCE_PACK_PATH,
+            Settings.SECTION_INI_GENERAL, R.string.resource_pack_path, 0,
+            getDefaultResourcePackPath(),
+            MainPresenter.REQUEST_DIRECTORY, resourcePackPath));
+    sl.add(new FilePicker(SettingsFile.FILE_NAME_DOLPHIN, SettingsFile.KEY_WII_SD_CARD_PATH,
+            Settings.SECTION_INI_GENERAL, R.string.SD_card_path, 0, getDefaultSDPath(),
+            MainPresenter.REQUEST_SD_FILE, wiiSDCardPath));
+    sl.add(new ConfirmRunnable(R.string.reset_paths, 0, R.string.reset_paths_confirmation, 0,
+            SettingsAdapter::resetPaths));
+  }
+
   private void addGameCubeSettings(ArrayList<SettingsItem> sl)
   {
     Setting systemLanguage = null;
-    Setting overrideGCLanguage = null;
     Setting slotADevice = null;
     Setting slotBDevice = null;
 
     SettingSection coreSection = mSettings.getSection(Settings.SECTION_INI_CORE);
     systemLanguage = coreSection.getSetting(SettingsFile.KEY_GAME_CUBE_LANGUAGE);
-    overrideGCLanguage = coreSection.getSetting(SettingsFile.KEY_OVERRIDE_GAME_CUBE_LANGUAGE);
     slotADevice = coreSection.getSetting(SettingsFile.KEY_SLOT_A_DEVICE);
     slotBDevice = coreSection.getSetting(SettingsFile.KEY_SLOT_B_DEVICE);
 
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_GAME_CUBE_LANGUAGE, Settings.SECTION_INI_CORE,
             R.string.gamecube_system_language, 0, R.array.gameCubeSystemLanguageEntries,
             R.array.gameCubeSystemLanguageValues, 0, systemLanguage));
-    sl.add(new CheckBoxSetting(SettingsFile.KEY_OVERRIDE_GAME_CUBE_LANGUAGE,
-            Settings.SECTION_INI_CORE, R.string.override_gamecube_language, 0, false,
-            overrideGCLanguage));
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_SLOT_A_DEVICE, Settings.SECTION_INI_CORE,
             R.string.slot_a_device, 0, R.array.slotDeviceEntries, R.array.slotDeviceValues, 8,
             slotADevice));
@@ -332,13 +378,17 @@ public final class SettingsFragmentPresenter
 
   private void addWiiSettings(ArrayList<SettingsItem> sl)
   {
+    Setting wiiSDCard = null;
     Setting continuousScan = null;
     Setting wiimoteSpeaker = null;
 
     SettingSection coreSection = mSettings.getSection(Settings.SECTION_INI_CORE);
+    wiiSDCard = coreSection.getSetting(SettingsFile.KEY_WII_SD_CARD);
     continuousScan = coreSection.getSetting(SettingsFile.KEY_WIIMOTE_SCAN);
     wiimoteSpeaker = coreSection.getSetting(SettingsFile.KEY_WIIMOTE_SPEAKER);
 
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_WII_SD_CARD, Settings.SECTION_INI_CORE,
+            R.string.insert_sd_card, R.string.insert_sd_card_description, true, wiiSDCard));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_WIIMOTE_SCAN, Settings.SECTION_INI_CORE,
             R.string.wiimote_scanning, R.string.wiimote_scanning_description, true,
             continuousScan));
@@ -417,15 +467,16 @@ public final class SettingsFragmentPresenter
             R.array.videoBackendValues, 0, videoBackend));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_SHOW_FPS, Settings.SECTION_GFX_SETTINGS,
             R.string.show_fps, R.string.show_fps_description, false, showFps));
-    sl.add(new SingleChoiceSetting(SettingsFile.KEY_SHADER_COMPILATION_MODE,
-            Settings.SECTION_GFX_SETTINGS, R.string.shader_compilation_mode,
-            R.string.shader_compilation_mode_description, R.array.shaderCompilationModeEntries,
-            R.array.shaderCompilationModeValues, 0, shaderCompilationMode));
+    sl.add(new SingleChoiceSettingDynamicDescriptions(SettingsFile.KEY_SHADER_COMPILATION_MODE,
+            Settings.SECTION_GFX_SETTINGS, R.string.shader_compilation_mode, 0,
+            R.array.shaderCompilationModeEntries,
+            R.array.shaderCompilationModeValues, R.array.shaderCompilationDescriptionEntries,
+            R.array.shaderCompilationDescriptionValues, 0, shaderCompilationMode));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_WAIT_FOR_SHADERS, Settings.SECTION_GFX_SETTINGS,
             R.string.wait_for_shaders, R.string.wait_for_shaders_description, false,
             waitForShaders));
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_ASPECT_RATIO, Settings.SECTION_GFX_SETTINGS,
-            R.string.aspect_ratio, R.string.aspect_ratio_description, R.array.aspectRatioEntries,
+            R.string.aspect_ratio, 0, R.array.aspectRatioEntries,
             R.array.aspectRatioValues, 0, aspectRatio));
 
     sl.add(new HeaderSetting(null, null, R.string.graphics_enhancements_and_hacks, 0));
@@ -585,6 +636,7 @@ public final class SettingsFragmentPresenter
     Setting gpuTextureDecoding = gfxSection.getSetting(SettingsFile.KEY_GPU_TEXTURE_DECODING);
     Setting xfbToTexture = hacksSection.getSetting(SettingsFile.KEY_XFB_TEXTURE);
     Setting immediateXfb = hacksSection.getSetting(SettingsFile.KEY_IMMEDIATE_XFB);
+    Setting skipDuplicateXfbs = hacksSection.getSetting(SettingsFile.KEY_SKIP_DUPLICATE_XFBS);
     Setting fastDepth = gfxSection.getSetting(SettingsFile.KEY_FAST_DEPTH);
 
     sl.add(new HeaderSetting(null, null, R.string.embedded_frame_buffer, 0));
@@ -613,6 +665,9 @@ public final class SettingsFragmentPresenter
             R.string.xfb_copy_method, R.string.xfb_copy_method_description, true, xfbToTexture));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_IMMEDIATE_XFB, Settings.SECTION_GFX_HACKS,
             R.string.immediate_xfb, R.string.immediate_xfb_description, false, immediateXfb));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_SKIP_DUPLICATE_XFBS, Settings.SECTION_GFX_HACKS,
+            R.string.skip_duplicate_xfbs, R.string.skip_duplicate_xfbs_description, true,
+            skipDuplicateXfbs));
 
     sl.add(new HeaderSetting(null, null, R.string.other, 0));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_FAST_DEPTH, Settings.SECTION_GFX_SETTINGS,
@@ -637,6 +692,8 @@ public final class SettingsFragmentPresenter
     Setting jitSystemRegistersOff =
             debugSection.getSetting(SettingsFile.KEY_DEBUG_JITSYSTEMREGISTEROFF);
     Setting jitBranchOff = debugSection.getSetting(SettingsFile.KEY_DEBUG_JITBRANCHOFF);
+    Setting jitRegisterCacheOff =
+            debugSection.getSetting(SettingsFile.KEY_DEBUG_JITREGISTERCACHEOFF);
 
     sl.add(new HeaderSetting(null, null, R.string.debug_warning, 0));
 
@@ -669,6 +726,9 @@ public final class SettingsFragmentPresenter
     sl.add(new CheckBoxSetting(SettingsFile.KEY_DEBUG_JITBRANCHOFF, Settings.SECTION_DEBUG,
             R.string.debug_jitbranchoff, 0, false,
             jitBranchOff));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_DEBUG_JITREGISTERCACHEOFF, Settings.SECTION_DEBUG,
+            R.string.debug_jitregistercacheoff, 0, false,
+            jitRegisterCacheOff));
   }
 
   private void addStereoSettings(ArrayList<SettingsItem> sl)
@@ -681,7 +741,7 @@ public final class SettingsFragmentPresenter
     Setting swapEyes = stereoScopySection.getSetting(SettingsFile.KEY_STEREO_SWAP);
 
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_STEREO_MODE, Settings.SECTION_STEREOSCOPY,
-            R.string.stereoscopy_mode, R.string.stereoscopy_mode_description,
+            R.string.stereoscopy_mode, 0,
             R.array.stereoscopyEntries, R.array.stereoscopyValues, 0, stereoModeValue));
     sl.add(new SliderSetting(SettingsFile.KEY_STEREO_DEPTH, Settings.SECTION_STEREOSCOPY,
             R.string.stereoscopy_depth, R.string.stereoscopy_depth_description, 100, "%", 20,
@@ -1535,5 +1595,30 @@ public final class SettingsFragmentPresenter
     }
 
     return extensionValue;
+  }
+
+  public static String getDefaultNANDRootPath()
+  {
+    return DirectoryInitialization.getUserDirectory() + "/Wii";
+  }
+
+  public static String getDefaultDumpPath()
+  {
+    return DirectoryInitialization.getUserDirectory() + "/Dump";
+  }
+
+  public static String getDefaultLoadPath()
+  {
+    return DirectoryInitialization.getUserDirectory() + "/Load";
+  }
+
+  public static String getDefaultResourcePackPath()
+  {
+    return DirectoryInitialization.getUserDirectory() + "/ResourcePacks";
+  }
+
+  public static String getDefaultSDPath()
+  {
+    return DirectoryInitialization.getUserDirectory() + "/Wii/sd.raw";
   }
 }

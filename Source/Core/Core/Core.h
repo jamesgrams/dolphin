@@ -25,7 +25,8 @@ namespace Core
 bool GetIsThrottlerTempDisabled();
 void SetIsThrottlerTempDisabled(bool disable);
 
-void Callback_VideoCopiedToXFB(bool video_update);
+void Callback_FramePresented();
+void Callback_NewField();
 
 enum class State
 {
@@ -56,6 +57,7 @@ bool WantsDeterminism();
 // [NOT THREADSAFE] For use by Host only
 void SetState(State state);
 State GetState();
+void WaitUntilDoneBooting();
 
 void SaveScreenShot(bool wait_for_completion = false);
 void SaveScreenShot(std::string_view name, bool wait_for_completion = false);
@@ -109,5 +111,7 @@ void QueueHostJob(std::function<void()> job, bool run_during_stop = false);
 void HostDispatchJobs();
 
 void DoFrameStep();
+
+void UpdateInputGate(bool require_focus);
 
 }  // namespace Core

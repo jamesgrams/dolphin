@@ -4,7 +4,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.support.v4.content.LocalBroadcastManager;
+
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import org.dolphinemu.dolphinemu.BuildConfig;
 import org.dolphinemu.dolphinemu.R;
@@ -14,8 +15,9 @@ import org.dolphinemu.dolphinemu.services.GameFileCacheService;
 
 public final class MainPresenter
 {
-  public static final int REQUEST_ADD_DIRECTORY = 1;
-  public static final int REQUEST_OPEN_FILE = 2;
+  public static final int REQUEST_DIRECTORY = 1;
+  public static final int REQUEST_GAME_FILE = 2;
+  public static final int REQUEST_SD_FILE = 3;
 
   private final MainView mView;
   private final Context mContext;
