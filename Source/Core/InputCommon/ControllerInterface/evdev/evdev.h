@@ -7,6 +7,7 @@
 #include <libevdev/libevdev.h>
 #include <string>
 #include <vector>
+#include <regex>
 
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 
@@ -83,7 +84,10 @@ public:
 
   const char* GetUniqueID() const;
 
-  std::string GetName() const override { return m_name; }
+  std::string GetName() const override {
+    std::regex gamepadRegex (".*(gamepad|joypad|controller|joystick).*",std::regex_constants::icase);
+    return regex_match(m_name,gamepadRegex) ? "Gamepad" : m_name;
+  }
   std::string GetSource() const override { return "evdev"; }
 
 private:
